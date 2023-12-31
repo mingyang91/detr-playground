@@ -4,4 +4,5 @@ lightning_logs
 datasets/
 VIA2COCO/
 balloon_dataset.zip
-balloon_dataset.zip.1
+balloon_dataset.zip.*
+balloon
