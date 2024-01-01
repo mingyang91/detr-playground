@@ -35,9 +35,9 @@ id2label = {k: v['name'] for k, v in ds.coco.cats.items()}
 class Detr(LightningModule):
   def __init__(self):
     super().__init__()
-    self.lr = 1e-5
-    self.lr_backbone = 1e-6
-    self.weight_decay = 1e-5
+    self.lr = 5e-5
+    self.lr_backbone = 5e-6
+    self.weight_decay = 5e-5
     # replace COCO classification head with custom head
     # we specify the "no_timm" variant here to not rely on the timm library
     # for the convolutional backbone
@@ -111,8 +111,8 @@ class DetrDataModel(LightningDataModule):
     val_size = len(coco) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(coco, [train_size, val_size])
 
-    self.train_dataset = torch.utils.data.Subset(train_dataset, range(0, 50))
-    self.val_dataset = torch.utils.data.Subset(val_dataset, range(0, 10))
+    self.train_dataset = train_dataset
+    self.val_dataset = val_dataset
 
   def collate_fn(self, batch):
     pixel_values = [item[0] for item in batch]
