@@ -110,8 +110,8 @@ class DetrDataModel(LightningDataModule):
     val_size = len(coco) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(coco, [train_size, val_size])
 
-    self.train_dataset = train_dataset
-    self.val_dataset = val_dataset
+    self.train_dataset = torch.utils.data.Subset(train_dataset, range(0, 50))
+    self.val_dataset = torch.utils.data.Subset(val_dataset, range(0, 10))
 
   def collate_fn(self, batch):
     pixel_values = [item[0] for item in batch]
