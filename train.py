@@ -23,7 +23,7 @@ class CocoDetection(torchvision.datasets.CocoDetection):
         images=img, annotations=target, return_tensors="pt")
     # remove batch dimension
     pixel_values = encoding["pixel_values"].squeeze()
-    target = encoding["labels"][0]  # remove batch dimension
+    target = encoding["labels"]  # remove batch dimension
 
     return pixel_values, target
 
@@ -35,9 +35,9 @@ id2label = {k: v['name'] for k, v in ds.coco.cats.items()}
 class Detr(LightningModule):
   def __init__(self):
     super().__init__()
-    self.lr = 1e-4
-    self.lr_backbone = 1e-5
-    self.weight_decay = 1e-4
+    self.lr = 1e-5
+    self.lr_backbone = 1e-6
+    self.weight_decay = 1e-5
     # replace COCO classification head with custom head
     # we specify the "no_timm" variant here to not rely on the timm library
     # for the convolutional backbone
@@ -55,8 +55,9 @@ class Detr(LightningModule):
   def common_step(self, batch, batch_idx):
     pixel_values = batch["pixel_values"]
     pixel_mask = batch["pixel_mask"]
-    labels = [{k: v.to(self.device) for k, v in t.items()}
-              for t in batch["labels"]]
+    labels = [{k: v.to(self.device) for k, v in t.items()} 
+              for ts in batch["labels"] 
+              for t in ts]
 
     outputs = self.model(pixel_values=pixel_values,
                          pixel_mask=pixel_mask, labels=labels)
@@ -125,7 +126,7 @@ class DetrDataModel(LightningDataModule):
 
   def train_dataloader(self):
     return DataLoader(
-        self.train_dataset, 
+        self.train_dataset,
         batch_size=4,
         collate_fn=self.collate_fn,
         shuffle=True,
@@ -134,7 +135,7 @@ class DetrDataModel(LightningDataModule):
 
   def val_dataloader(self):
     return DataLoader(
-        self.val_dataset, 
+        self.val_dataset,
         batch_size=2,
         collate_fn=self.collate_fn,
         num_workers=11,
