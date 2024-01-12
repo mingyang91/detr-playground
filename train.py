@@ -1,7 +1,7 @@
 import torch
 import torchvision
 from torch.utils.data import DataLoader
-from transformers import DetrImageProcessor, DetrForObjectDetection
+from transformers import AutoImageProcessor, AutoModelForObjectDetection
 from lightning.pytorch import LightningModule, LightningDataModule
 from lightning.pytorch.cli import LightningCLI
 
@@ -33,18 +33,18 @@ id2label = {k: v['name'] for k, v in ds.coco.cats.items()}
 
 
 class Detr(LightningModule):
-  def __init__(self):
+  def __init__(self, lr=1e-4, lr_backbone=1e-5, weight_decay=1e-4):
     super().__init__()
-    self.lr = 5e-5
-    self.lr_backbone = 5e-6
-    self.weight_decay = 5e-5
+    self.lr = lr
+    self.lr_backbone = lr_backbone
+    self.weight_decay = weight_decay
     # replace COCO classification head with custom head
     # we specify the "no_timm" variant here to not rely on the timm library
     # for the convolutional backbone
-    self.model = DetrForObjectDetection.from_pretrained("facebook/detr-resnet-50",
-                                                        revision="no_timm",
-                                                        num_labels=len(id2label),
-                                                        ignore_mismatched_sizes=True).to(self.device)
+    self.model = AutoModelForObjectDetection.from_pretrained("microsoft/conditional-detr-resnet-50",
+                                                             # revision="no_timm",
+                                                             num_labels=len(id2label),
+                                                             ignore_mismatched_sizes=True).to(self.device)
     # see https://github.com/PyTorchLightning/pytorch-lightning/pull/1896
 
   def forward(self, pixel_values, pixel_mask):
@@ -55,8 +55,8 @@ class Detr(LightningModule):
   def common_step(self, batch, batch_idx):
     pixel_values = batch["pixel_values"]
     pixel_mask = batch["pixel_mask"]
-    labels = [{k: v.to(self.device) for k, v in t.items()} 
-              for ts in batch["labels"] 
+    labels = [{k: v.to(self.device) for k, v in t.items()}
+              for ts in batch["labels"]
               for t in ts]
 
     outputs = self.model(pixel_values=pixel_values,
@@ -71,17 +71,17 @@ class Detr(LightningModule):
     loss, loss_dict = self.common_step(batch, batch_idx)
     # logs metrics for each training_step,
     # and the average across the epoch
-    self.log("training_loss", loss)
+    self.log("training_loss", loss, batch_size=len(batch))
     for k, v in loss_dict.items():
-      self.log("train_" + k, v.item())
+      self.log("train_" + k, v.item(), batch_size=len(batch))
 
     return loss
 
   def validation_step(self, batch, batch_idx):
     loss, loss_dict = self.common_step(batch, batch_idx)
-    self.log("validation_loss", loss)
+    self.log("validation_loss", loss, batch_size=len(batch))
     for k, v in loss_dict.items():
-      self.log("validation_" + k, v.item())
+      self.log("validation_" + k, v.item(), batch_size=len(batch))
 
     return loss
 
@@ -103,7 +103,7 @@ class Detr(LightningModule):
 class DetrDataModel(LightningDataModule):
   def __init__(self):
     super().__init__()
-    self.processor = DetrImageProcessor.from_pretrained("facebook/detr-resnet-50")
+    self.processor = AutoImageProcessor.from_pretrained("microsoft/conditional-detr-resnet-50")
     coco = CocoDetection(
         img_folder='.', ann_file='datasets/small.json', processor=self.processor)
     train_ratio = 0.8
