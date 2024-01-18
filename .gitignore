@@ -6,3 +6,4 @@ VIA2COCO/
 balloon_dataset.zip
 balloon_dataset.zip.*
 balloon
+*.pyc

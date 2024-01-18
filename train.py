@@ -33,7 +33,7 @@ id2label = {k: v['name'] for k, v in ds.coco.cats.items()}
 
 
 class Detr(LightningModule):
-  def __init__(self, lr=1e-4, lr_backbone=1e-5, weight_decay=1e-4):
+  def __init__(self, lr=5e-5, lr_backbone=1e-5, weight_decay=5e-5): # or 5e-5
     super().__init__()
     self.lr = lr
     self.lr_backbone = lr_backbone
@@ -136,7 +136,7 @@ class DetrDataModel(LightningDataModule):
   def val_dataloader(self):
     return DataLoader(
         self.val_dataset,
-        batch_size=2,
+        batch_size=4,
         collate_fn=self.collate_fn,
         num_workers=11,
         persistent_workers=True,
