@@ -1,6 +1,14 @@
+from itertools import groupby
 from urllib.parse import urlparse
 import boto3
 from io import BytesIO
+import torchvision
+import json
+import os
+from urllib.parse import urlparse
+from utils.split import split_image_with_labels
+from PIL import Image
+from argparse import ArgumentParser
 
 
 class S3Url(object):
@@ -58,9 +66,6 @@ def image_from_s3(url):
     return Image.open(BytesIO(raw))
 
 
-import torchvision
-import os
-
 
 class S3Coco(torchvision.datasets.CocoDetection):
     def __init__(self, ann_file):
@@ -70,13 +75,6 @@ class S3Coco(torchvision.datasets.CocoDetection):
         path = self.coco.loadImgs(id)[0]["file_name"]
         # return Image.open(os.path.join(self.root, path)).convert("RGB")
         return image_from_s3(path).convert("RGB")
-
-
-import json
-import os
-from urllib.parse import urlparse
-from utils.split import split_image_with_labels
-from PIL import Image
 
 coco_image = {
     "width": int,
@@ -93,22 +91,24 @@ coco_annotation = {
     "iscrowd": int,
     "id": int
 }
-large_coco = json.load(open('datasets/result.json'))
-coco_images: list[coco_image] = large_coco['images']
-image_id_seq = 0
-annotation_id_seq = 0
-small_images: list[coco_image] = []
-small_annotations: list[coco_annotation] = []
 
-for coco_img in coco_images:
-    annotations: list[coco_annotation] = list(
-        filter(lambda ann: ann["image_id"] == coco_img["id"], large_coco['annotations']))
-    if len(annotations) == 0:
-        continue
+def download_to_coco():
+    large_coco = json.load(open('datasets/result.json'))
+    coco_images: list[coco_image] = large_coco['images']
+    image_id_seq = 0
+    annotation_id_seq = 0
+    small_images: list[coco_image] = []
+    small_annotations: list[coco_annotation] = []
+
+    for coco_img in coco_images:
+        annotations: list[coco_annotation] = list(
+            filter(lambda ann: ann["image_id"] == coco_img["id"], large_coco['annotations']))
+        if len(annotations) == 0:
+            continue
     image = image_from_s3(coco_img['file_name'])
     split_images = split_image_with_labels(image=image, labels=annotations,
-                                           hint_size_min=(800, 800), hint_size_max=(1333, 1333),
-                                           overlap=0.1)
+                                            hint_size_min=(800, 800), hint_size_max=(1333, 1333),
+                                            overlap=0.1)
     for small in split_images:
         image_id_seq += 1
         image_id = image_id_seq
@@ -138,6 +138,49 @@ for coco_img in coco_images:
                 "id": annotation_id_seq
             })
 
-large_coco['images'] = small_images
-large_coco['annotations'] = small_annotations
-json.dump(large_coco, open('datasets/small.json', 'w'))
+    large_coco['images'] = small_images
+    large_coco['annotations'] = small_annotations
+    json.dump(large_coco, open('datasets/small.json', 'w'))
+
+
+def coco_to_yolo_txt(image: coco_image, annotations: list[coco_annotation]):
+    def ann_to_yolo(ann):
+        image_width = image["width"]
+        image_height = image["height"]
+        bbox = ann["bbox"]
+        x = bbox[0]
+        y = bbox[1]
+        w = bbox[2]
+        h = bbox[3]
+        category_id = ann["category_id"]
+        return f"{category_id} {x / image_width} {y / image_height} {w / image_width} {h / image_height}"
+    return [ ann_to_yolo(ann) for ann in annotations ]
+
+def to_yolo():
+    small_coco = json.load(open('datasets/small.json')) 
+    small_annotations = small_coco['annotations']
+    small_images = small_coco['images']
+    small_images_dict = { image["id"]: image for image in small_images }
+    for group, items in groupby(small_annotations, lambda ann: ann["image_id"]):
+        image = small_images_dict[group]
+        file_name = image["file_name"]
+        file_name, _ = os.path.splitext(file_name)
+        file_name = f"{file_name}.txt"
+        with open(file_name, 'w') as f:
+            f.write('\n'.join(coco_to_yolo_txt(image, list(items))))
+
+
+def parameters():
+    parser = ArgumentParser("Download coco dataset from s3 to local")
+    parser.add_argument('--to-coco', action='store_true')
+    parser.add_argument('--to-yolo', action='store_true')
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    # params condition
+    params = parameters()
+    if params.to_coco:
+        download_to_coco()
+    if params.to_yolo:
+        to_yolo()
