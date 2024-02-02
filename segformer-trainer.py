@@ -98,10 +98,7 @@ def polygons_to_mask(img_shape, shapes):
     return mask
 
 
-feature_extractor = SegformerImageProcessor.from_pretrained("nvidia/mit-b5", do_reduce_labels=True)
-
-
-def create_collate_fn(max_tiles_per_batch=32):
+def create_collate_fn(feature_extractor: SegformerImageProcessor, max_tiles_per_batch=32):
     def custom_collate_fn(batch):
         global feature_extractor
         # Randomly select a subset of tiles from the batch
@@ -138,7 +135,7 @@ def downsample_image_pil(image, scale_factor):
 
 
 class CustomSemanticSegmentationDataset(Dataset):
-    def __init__(self, ann_dir, feature_extractor, scale_factor=2.0, transform=None):
+    def __init__(self, ann_dir, feature_extractor, scale_factor=4.0, transform=None):
         """
         Args:
             img_dir (string): Directory with all the images.
@@ -215,20 +212,21 @@ class SegformerFineTuner(LightningModule):
     def train_dataloader(self):
         train_dataset = CustomSemanticSegmentationDataset(
             "datasets/segformer/train", self.feature_extractor)
-        return DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=create_collate_fn(8), num_workers=7)
+        return DataLoader(train_dataset, batch_size=4, shuffle=True,
+                          collate_fn=create_collate_fn(self.feature_extractor, 8), num_workers=15)
 
     def val_dataloader(self):
         val_dataset = CustomSemanticSegmentationDataset(
             "datasets/segformer/val", self.feature_extractor)
-        return DataLoader(val_dataset, batch_size=4, collate_fn=create_collate_fn(8), num_workers=7)
+        return DataLoader(val_dataset, batch_size=4,
+                          collate_fn=create_collate_fn(self.feature_extractor, 8), num_workers=15)
 
 
 # Define training
 
 def train_model():
-    # Replace YOUR_NUM_LABELS with the actual number of labels in your dataset
     model = SegformerFineTuner(num_labels=len(id2label.keys()))
-    trainer = Trainer(max_steps=1000, callbacks=[ModelCheckpoint(monitor='val_loss'), LearningRateMonitor()])
+    trainer = Trainer(max_steps=1000, log_every_n_steps=10, callbacks=[ModelCheckpoint(monitor='val_loss'), LearningRateMonitor()])
     trainer.fit(model)
 
 
