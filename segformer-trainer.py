@@ -216,7 +216,7 @@ class SegformerFineTuner(LightningModule):
 def train_model():
     # Replace YOUR_NUM_LABELS with the actual number of labels in your dataset
     model = SegformerFineTuner(num_labels=len(id2label.keys()))
-    trainer = Trainer(max_epochs=1000, callbacks=[ModelCheckpoint(monitor='val_loss'), LearningRateMonitor()])
+    trainer = Trainer(max_steps=1000, callbacks=[ModelCheckpoint(monitor='val_loss'), LearningRateMonitor()])
     trainer.fit(model)
 
 
