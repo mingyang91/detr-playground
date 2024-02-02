@@ -1,6 +1,8 @@
+from random import sample
+
 import torch
 from torch.utils.data import DataLoader, Dataset
-from transformers import SegformerForSemanticSegmentation, SegformerFeatureExtractor
+from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 from PIL import Image
@@ -96,23 +98,36 @@ def polygons_to_mask(img_shape, shapes):
     return mask
 
 
-def custom_collate_fn(batch):
-    # Assuming each element in `batch` is a tuple (image_tiles, mask_tiles)
-    # where `image_tiles` and `mask_tiles` are lists of numpy arrays
+feature_extractor = SegformerImageProcessor.from_pretrained("nvidia/mit-b5", do_reduce_labels=True)
 
-    # Separate image and mask tiles
-    batch_image_tiles = [item[0] for item in batch]  # List of lists of image tiles
-    batch_mask_tiles = [item[1] for item in batch]  # List of lists of mask tiles
 
-    # Flatten the lists and convert numpy arrays to tensors
-    image_tiles = [tile for sublist in batch_image_tiles for tile in sublist]
-    mask_tiles = [tile for sublist in batch_mask_tiles for tile in sublist]
+def create_collate_fn(max_tiles_per_batch=32):
+    def custom_collate_fn(batch):
+        global feature_extractor
+        # Randomly select a subset of tiles from the batch
+        # Flatten the list of image and mask tiles first
+        flat_tuple_tiles = [tp for sublist in batch for tp in zip(sublist[0], sublist[1])]
 
-    # Stack the tensors to create batches
-    images_stacked = torch.stack(image_tiles)
-    masks_stacked = torch.stack(mask_tiles)
+        # Ensure the number of selected tiles does not exceed the available tiles
+        num_tiles_to_select = min(max_tiles_per_batch, len(flat_tuple_tiles))
 
-    return images_stacked, masks_stacked
+        # Randomly sample tiles without replacement
+        selected = sample(flat_tuple_tiles, num_tiles_to_select)
+
+        selected_image_tiles = [tp[0] for tp in selected]
+        selected_mask_tiles = [tp[1] for tp in selected]
+
+        all_image_tiles = [feature_extractor(images=item, return_tensors="pt")['pixel_values'].squeeze() for item in
+                           selected_image_tiles]
+        all_mask_tiles = [torch.as_tensor(item, dtype=torch.long) for item in selected_mask_tiles]
+
+        # Stack the selected tensors to create batches
+        images_stacked = torch.stack(all_image_tiles)
+        masks_stacked = torch.stack(all_mask_tiles)
+
+        return images_stacked, masks_stacked
+
+    return custom_collate_fn
 
 
 class CustomSemanticSegmentationDataset(Dataset):
@@ -156,13 +171,6 @@ class CustomSemanticSegmentationDataset(Dataset):
             ]
             tiles = [t['image'] for t in transformed]
             masks = [t['mask'] for t in transformed]
-        masks = [torch.as_tensor(mask, dtype=torch.long) for mask in masks]
-        tiles = [
-            self.feature_extractor(images=t, return_tensors="pt")['pixel_values'].squeeze()
-            for t in tiles
-        ]
-        # Return a list of processed tiles
-        # This assumes inference mode. For training, you'll want to process and return masks similarly.
         return tiles, masks
 
 
@@ -171,7 +179,7 @@ class SegformerFineTuner(LightningModule):
         super().__init__()
         self.model = SegformerForSemanticSegmentation.from_pretrained(
             "nvidia/mit-b5", num_labels=num_labels)
-        self.feature_extractor = SegformerFeatureExtractor.from_pretrained("nvidia/mit-b5")
+        self.feature_extractor = SegformerImageProcessor.from_pretrained("nvidia/mit-b5", do_reduce_labels=True)
 
     def forward(self, pixel_values, labels):
         return self.model(pixel_values=pixel_values, labels=labels)
@@ -194,22 +202,21 @@ class SegformerFineTuner(LightningModule):
 
     def train_dataloader(self):
         train_dataset = CustomSemanticSegmentationDataset(
-            "/Users/famer.me/Repository/crack-in-asphalt/2023-12-04/Origin/1", self.feature_extractor)
-        return DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=custom_collate_fn)
+            "datasets/segformer/train", self.feature_extractor)
+        return DataLoader(train_dataset, batch_size=1, shuffle=True, collate_fn=create_collate_fn(8), num_workers=7)
 
     def val_dataloader(self):
         val_dataset = CustomSemanticSegmentationDataset(
-            "/Users/famer.me/Repository/crack-in-asphalt/2023-12-04/Origin/1", self.feature_extractor)
-        return DataLoader(val_dataset, batch_size=4, collate_fn=custom_collate_fn)
+            "datasets/segformer/val", self.feature_extractor)
+        return DataLoader(val_dataset, batch_size=1, collate_fn=create_collate_fn(8), num_workers=7)
 
 
 # Define training
 
-
 def train_model():
     # Replace YOUR_NUM_LABELS with the actual number of labels in your dataset
     model = SegformerFineTuner(num_labels=len(id2label.keys()))
-    trainer = Trainer(max_epochs=10, callbacks=[ModelCheckpoint(monitor='val_loss'), LearningRateMonitor()])
+    trainer = Trainer(max_epochs=1000, callbacks=[ModelCheckpoint(monitor='val_loss'), LearningRateMonitor()])
     trainer.fit(model)
 
 
