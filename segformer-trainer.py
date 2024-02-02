@@ -130,8 +130,15 @@ def create_collate_fn(max_tiles_per_batch=32):
     return custom_collate_fn
 
 
+def downsample_image_pil(image, scale_factor):
+    """Downsample the image using PIL."""
+    new_size = (int(image.width / scale_factor), int(image.height / scale_factor))
+    downsampled_image = image.resize(new_size, Image.ANTIALIAS)
+    return downsampled_image
+
+
 class CustomSemanticSegmentationDataset(Dataset):
-    def __init__(self, ann_dir, feature_extractor, transform=None):
+    def __init__(self, ann_dir, feature_extractor, scale_factor = 2.0, transform=None):
         """
         Args:
             img_dir (string): Directory with all the images.
@@ -141,6 +148,7 @@ class CustomSemanticSegmentationDataset(Dataset):
         """
         self.ann_dir = ann_dir
         self.feature_extractor = feature_extractor
+        self.scale_factor = scale_factor
         self.transform = transform
         self.anns = [file for file in os.listdir(ann_dir) if file.endswith(".json")]
 
@@ -153,11 +161,15 @@ class CustomSemanticSegmentationDataset(Dataset):
 
         # Load image
         image = Image.open(img_path).convert("RGB")
+        image = downsample_image_pil(image, self.scale_factor)
         image = np.array(image)
 
         # Load annotation and create mask
         with open(ann_path) as f:
             anns = json.load(f)
+        for shape in anns['shapes']:
+            if shape['shape_type'] == 'polygon':
+                shape['points'] = [[int(p[0] / self.scale_factor), int(p[1] / self.scale_factor)] for p in shape['points']]
         mask = polygons_to_mask(image.shape[:2], anns['shapes'])
 
         tiles = split_image_into_tiles(image)
