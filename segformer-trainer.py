@@ -215,12 +215,12 @@ class SegformerFineTuner(LightningModule):
     def train_dataloader(self):
         train_dataset = CustomSemanticSegmentationDataset(
             "datasets/segformer/train", self.feature_extractor)
-        return DataLoader(train_dataset, batch_size=1, shuffle=True, collate_fn=create_collate_fn(8), num_workers=7)
+        return DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=create_collate_fn(8), num_workers=7)
 
     def val_dataloader(self):
         val_dataset = CustomSemanticSegmentationDataset(
             "datasets/segformer/val", self.feature_extractor)
-        return DataLoader(val_dataset, batch_size=1, collate_fn=create_collate_fn(8), num_workers=7)
+        return DataLoader(val_dataset, batch_size=4, collate_fn=create_collate_fn(8), num_workers=7)
 
 
 # Define training
