@@ -133,7 +133,7 @@ def create_collate_fn(max_tiles_per_batch=32):
 def downsample_image_pil(image, scale_factor):
     """Downsample the image using PIL."""
     new_size = (int(image.width / scale_factor), int(image.height / scale_factor))
-    downsampled_image = image.resize(new_size, Image.ANTIALIAS)
+    downsampled_image = image.resize(new_size, Image.LANCZOS)
     return downsampled_image
 
 
