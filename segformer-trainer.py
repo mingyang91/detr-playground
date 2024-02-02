@@ -138,7 +138,7 @@ def downsample_image_pil(image, scale_factor):
 
 
 class CustomSemanticSegmentationDataset(Dataset):
-    def __init__(self, ann_dir, feature_extractor, scale_factor = 2.0, transform=None):
+    def __init__(self, ann_dir, feature_extractor, scale_factor=2.0, transform=None):
         """
         Args:
             img_dir (string): Directory with all the images.
