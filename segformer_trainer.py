@@ -27,7 +27,7 @@ id2label = {
 label2id = {v: k for k, v in id2label.items()}
 
 
-def split_mask_into_tiles(mask, tile_size=(512, 512), overlap=0):
+def split_mask_into_tiles(mask, tile_size=(512, 512), overlap=64):
     """
     Splits a mask into smaller tiles.
 
@@ -100,7 +100,6 @@ def polygons_to_mask(img_shape, shapes):
 
 def create_collate_fn(feature_extractor: SegformerImageProcessor, max_tiles_per_batch=32):
     def custom_collate_fn(batch):
-        global feature_extractor
         # Randomly select a subset of tiles from the batch
         # Flatten the list of image and mask tiles first
         flat_tuple_tiles = [tp for sublist in batch for tp in zip(sublist[0], sublist[1])]
