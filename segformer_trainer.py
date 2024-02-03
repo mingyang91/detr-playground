@@ -221,21 +221,27 @@ class SegformerFineTuner(LightningModule):
     def train_dataloader(self):
         train_dataset = CustomSemanticSegmentationDataset(
             "datasets/segformer/train", self.feature_extractor)
-        return DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1, collate_fn=sample_collate)
+        return DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=15, collate_fn=sample_collate)
 
     def val_dataloader(self):
         val_dataset = CustomSemanticSegmentationDataset(
             "datasets/segformer/val", self.feature_extractor)
-        return DataLoader(val_dataset, batch_size=1, num_workers=1, collate_fn=sample_collate)
+        return DataLoader(val_dataset, batch_size=1, num_workers=15, collate_fn=sample_collate)
 
 
 # Define training
 
 def train_model():
     model = SegformerFineTuner(num_labels=len(id2label.keys()))
-    trainer = Trainer(max_steps=1000, log_every_n_steps=10,
-                      callbacks=[ModelCheckpoint(monitor='val_loss'), LearningRateMonitor()])
+    model_checkpoint = ModelCheckpoint(save_top_k=10, monitor='val_loss',
+                                       dirpath='./ckpt/', filename="sample-mnist-{epoch:02d}-{val_loss:.2f}")
+
+    trainer = Trainer(max_steps=300, log_every_n_steps=10,
+                      callbacks=[model_checkpoint, LearningRateMonitor()])
     trainer.fit(model)
+
+    model.model.push_to_hub("mingyang91/segformer-for-surveillance")
+    model.feature_extractor.push_to_hub("mingyang91/segformer-for-surveillance")
 
 
 if __name__ == '__main__':
