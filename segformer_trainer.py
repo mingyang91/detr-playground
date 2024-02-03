@@ -1,5 +1,4 @@
 from random import sample
-from typing import Any
 
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -178,10 +177,10 @@ class CustomSemanticSegmentationDataset(Dataset):
             anns = json.load(f)
         mask = polygons_to_mask(image.size, anns['shapes'])
 
-        tiles = split_image_into_tiles(np.array(image), tile_size=(2048, 2048))
+        tiles = split_image_into_tiles(np.array(image), tile_size=(1024, 1024))
 
         # Optionally split the mask here in the same way if training
-        masks = split_mask_into_tiles(mask, tile_size=(2048, 2048))
+        masks = split_mask_into_tiles(mask, tile_size=(1024, 1024))
         if self.transform:
             transformed = [
                 self.transform(image=tile, mask=mask)
@@ -233,15 +232,10 @@ class SegformerFineTuner(LightningModule):
 
 def train_model():
     model = SegformerFineTuner(num_labels=len(id2label.keys()))
-    model_checkpoint = ModelCheckpoint(save_top_k=10, monitor='val_loss',
-                                       dirpath='./ckpt/', filename="sample-mnist-{epoch:02d}-{val_loss:.2f}")
 
     trainer = Trainer(max_steps=300, log_every_n_steps=10,
-                      callbacks=[model_checkpoint, LearningRateMonitor()])
+                      callbacks=[LearningRateMonitor()])
     trainer.fit(model)
-
-    model.model.push_to_hub("mingyang91/segformer-for-surveillance")
-    model.feature_extractor.push_to_hub("mingyang91/segformer-for-surveillance")
 
 
 if __name__ == '__main__':
