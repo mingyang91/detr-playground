@@ -128,11 +128,17 @@ def create_collate_fn(feature_extractor: SegformerImageProcessor, max_tiles_per_
 
 
 def sample_collate(batch, max_tiles_per_batch=8):
-    num_tiles_to_select = min(max_tiles_per_batch, len(batch))
-    selected = sample(batch, num_tiles_to_select)
+    pixel_values = []
+    labels = []
+    for item in batch:
+        num_tiles_to_select = min(max_tiles_per_batch, len(item['pixel_values']))
+        selected_indexes = sample(range(num_tiles_to_select), num_tiles_to_select)
+        pixel_values.extend([item['pixel_values'][index] for index in selected_indexes])
+        labels.extend([item['labels'][index] for index in selected_indexes])
+
     return {
-        'pixel_values': torch.stack([item['pixel_values'] for item in selected]).squeeze(0),
-        'labels': torch.stack([item['labels'] for item in selected]).squeeze(0)
+        'pixel_values': torch.stack(pixel_values).squeeze(0),
+        'labels': torch.stack(labels).squeeze(0)
     }
 
 
