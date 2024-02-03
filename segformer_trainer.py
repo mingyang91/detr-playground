@@ -127,15 +127,13 @@ def create_collate_fn(feature_extractor: SegformerImageProcessor, max_tiles_per_
     return custom_collate_fn
 
 
-class FlattenCollate:
-    def __init__(self) -> None:
-        pass
-
-    def __call__(self, batch) -> Any:
-        return {
-            'pixel_values': torch.stack([item['pixel_values'] for item in batch]).squeeze(0),
-            'labels': torch.stack([item['labels'] for item in batch]).squeeze(0)
-        }
+def sample_collate(batch, max_tiles_per_batch=8):
+    num_tiles_to_select = min(max_tiles_per_batch, len(batch))
+    selected = sample(batch, num_tiles_to_select)
+    return {
+        'pixel_values': torch.stack([item['pixel_values'] for item in selected]).squeeze(0),
+        'labels': torch.stack([item['labels'] for item in selected]).squeeze(0)
+    }
 
 
 def downsample_image_pil(image, scale_factor):
@@ -217,14 +215,12 @@ class SegformerFineTuner(LightningModule):
     def train_dataloader(self):
         train_dataset = CustomSemanticSegmentationDataset(
             "datasets/segformer/train", self.feature_extractor)
-        flatten = FlattenCollate()
-        return DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1, collate_fn=flatten)
+        return DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1, collate_fn=sample_collate)
 
     def val_dataloader(self):
         val_dataset = CustomSemanticSegmentationDataset(
             "datasets/segformer/val", self.feature_extractor)
-        flatten = FlattenCollate()
-        return DataLoader(val_dataset, batch_size=1, num_workers=1, collate_fn=flatten)
+        return DataLoader(val_dataset, batch_size=1, num_workers=1, collate_fn=sample_collate)
 
 
 # Define training
