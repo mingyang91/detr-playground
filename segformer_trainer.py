@@ -1,4 +1,5 @@
 from random import sample
+from typing import Any
 
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -126,6 +127,17 @@ def create_collate_fn(feature_extractor: SegformerImageProcessor, max_tiles_per_
     return custom_collate_fn
 
 
+class FlattenCollate:
+    def __init__(self) -> None:
+        pass
+
+    def __call__(self, batch) -> Any:
+        return {
+            'pixel_values': torch.stack([item['pixel_values'] for item in batch]).squeeze(0),
+            'labels': torch.stack([item['labels'] for item in batch]).squeeze(0)
+        }
+
+
 def downsample_image_pil(image, scale_factor):
     """Downsample the image using PIL."""
     new_size = (int(image.width / scale_factor), int(image.height / scale_factor))
@@ -134,7 +146,7 @@ def downsample_image_pil(image, scale_factor):
 
 
 class CustomSemanticSegmentationDataset(Dataset):
-    def __init__(self, ann_dir, feature_extractor, scale_factor=4.0, transform=None):
+    def __init__(self, ann_dir, feature_extractor, transform=None):
         """
         Args:
             img_dir (string): Directory with all the images.
@@ -144,7 +156,6 @@ class CustomSemanticSegmentationDataset(Dataset):
         """
         self.ann_dir = ann_dir
         self.feature_extractor = feature_extractor
-        self.scale_factor = scale_factor
         self.transform = transform
         self.anns = [file for file in os.listdir(ann_dir) if file.endswith(".json")]
 
@@ -157,21 +168,16 @@ class CustomSemanticSegmentationDataset(Dataset):
 
         # Load image
         image = Image.open(img_path).convert("RGB")
-        image = downsample_image_pil(image, self.scale_factor)
-        image = np.array(image)
 
         # Load annotation and create mask
         with open(ann_path) as f:
             anns = json.load(f)
-        for shape in anns['shapes']:
-            if shape['shape_type'] == 'polygon':
-                shape['points'] = [[int(p[0] / self.scale_factor), int(p[1] / self.scale_factor)] for p in shape['points']]
-        mask = polygons_to_mask(image.shape[:2], anns['shapes'])
+        mask = polygons_to_mask(image.size, anns['shapes'])
 
-        tiles = split_image_into_tiles(image)
+        tiles = split_image_into_tiles(np.array(image), tile_size=(2048, 2048))
 
         # Optionally split the mask here in the same way if training
-        masks = split_mask_into_tiles(mask)
+        masks = split_mask_into_tiles(mask, tile_size=(2048, 2048))
         if self.transform:
             transformed = [
                 self.transform(image=tile, mask=mask)
@@ -179,7 +185,7 @@ class CustomSemanticSegmentationDataset(Dataset):
             ]
             tiles = [t['image'] for t in transformed]
             masks = [t['mask'] for t in transformed]
-        return tiles, masks
+        return self.feature_extractor(images=tiles, segmentation_maps=masks, do_reduce_labels=True, size=(512, 512), return_tensors="pt")
 
 
 class SegformerFineTuner(LightningModule):
@@ -187,19 +193,19 @@ class SegformerFineTuner(LightningModule):
         super().__init__()
         self.model = SegformerForSemanticSegmentation.from_pretrained(
             "nvidia/mit-b5", num_labels=num_labels)
-        self.feature_extractor = SegformerImageProcessor.from_pretrained("nvidia/mit-b5", do_reduce_labels=True)
+        self.feature_extractor = SegformerImageProcessor.from_pretrained("nvidia/mit-b5")
 
     def forward(self, pixel_values, labels):
         return self.model(pixel_values=pixel_values, labels=labels)
 
     def training_step(self, batch, batch_idx):
-        outputs = self(batch[0], batch[1])
+        outputs = self(**batch)
         loss = outputs.loss
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        outputs = self(batch[0], batch[1])
+        outputs = self(**batch)
         loss = outputs.loss
         self.log('val_loss', loss)
         return loss
@@ -211,14 +217,14 @@ class SegformerFineTuner(LightningModule):
     def train_dataloader(self):
         train_dataset = CustomSemanticSegmentationDataset(
             "datasets/segformer/train", self.feature_extractor)
-        return DataLoader(train_dataset, batch_size=4, shuffle=True,
-                          collate_fn=create_collate_fn(self.feature_extractor, 8), num_workers=15)
+        flatten = FlattenCollate()
+        return DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1, collate_fn=flatten)
 
     def val_dataloader(self):
         val_dataset = CustomSemanticSegmentationDataset(
             "datasets/segformer/val", self.feature_extractor)
-        return DataLoader(val_dataset, batch_size=4,
-                          collate_fn=create_collate_fn(self.feature_extractor, 8), num_workers=15)
+        flatten = FlattenCollate()
+        return DataLoader(val_dataset, batch_size=1, num_workers=1, collate_fn=flatten)
 
 
 # Define training
