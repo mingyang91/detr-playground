@@ -90,7 +90,7 @@ def polygons_to_mask(img_shape, shapes):
     Returns:
         A binary mask as a numpy array with shape (height, width).
     """
-    mask = np.zeros(img_shape, dtype=np.uint8)
+    mask = np.full(img_shape, 255, dtype=np.uint8)
     for shape in shapes:
         if shape['shape_type'] == 'polygon':
             points = np.array(shape['points'], dtype=np.int32)
@@ -195,8 +195,9 @@ class SegformerFineTuner(LightningModule):
     def __init__(self, num_labels):
         super().__init__()
         self.model = SegformerForSemanticSegmentation.from_pretrained(
-            "nvidia/mit-b5", num_labels=num_labels)
-        self.feature_extractor = SegformerImageProcessor.from_pretrained("nvidia/mit-b5")
+            "nvidia/mit-b5", num_labels=num_labels,
+            id2label=id2label, label2id=label2id)
+        self.feature_extractor = SegformerImageProcessor.from_pretrained("nvidia/mit-b5", do_reduce_labels=True)
 
     def forward(self, pixel_values, labels):
         return self.model(pixel_values=pixel_values, labels=labels)
@@ -204,13 +205,13 @@ class SegformerFineTuner(LightningModule):
     def training_step(self, batch, batch_idx):
         outputs = self(**batch)
         loss = outputs.loss
-        self.log('train_loss', loss)
+        self.log('train_loss', loss, batch_size=len(batch))
         return loss
 
     def validation_step(self, batch, batch_idx):
         outputs = self(**batch)
         loss = outputs.loss
-        self.log('val_loss', loss)
+        self.log('val_loss', loss, batch_size=len(batch))
         return loss
 
     def configure_optimizers(self):
